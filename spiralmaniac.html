@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style type="text/css">
+        canvas {
+            border: 1px solid black;
+            margin: 10px;
+        }
+        html, body, button {
+            margin: 2px;
+            font-family: monospace;
+            font-size: 20px;
+        }
+    </style>
+    <title>spiralmaniac</title>
+</head>
+
+<body onload="main();">
+    <p>
+        <div id="msg"></div>
+        <table id="table">
+            <tr>
+                <td>
+                    <label>a</label>
+                    <input tabindex="1" type="number" id="a"
+                           onchange="(function () { spiral.a = Number.parseInt(value); })();">
+                </td>
+                <td>
+                    <div>
+                        <label>speed</label>
+                        <input tabindex="-1" type="range" min="0" max="20" value="10" class="slider" id="rotate"
+                            oninput="(function(){spiral.rotateSpeed = value / 100;})();">
+                    </div>
+                </td>
+                <td>
+                    <label>type</label>
+                    <select tabindex="-1" id="type" onclick="(function(){ colorMgr.inColor = !colorMgr.inColor; })();">
+                        <option>archimedean</option>
+                        <option>fermat</option>
+                        <option>hyperbolic</option>
+                    </select>
+                </td>
+                <td>
+                    <label>color</label>
+                    <input tabindex="-1" type="checkbox" id="inColor" unchecked
+                    onclick="(function(){ colorMgr.inColor = !colorMgr.inColor; })();">
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <label>b</label>
+                    <input tabindex="1" type="number" id="b"
+                           onchange="(function () { spiral.b = Number.parseInt(value); })();">
+                </td>
+                <td>
+                    <label>loops</label>
+                    <input tabindex="-1" type="range" min="1" max="100" value="10" class="slider" id="loops"
+                        oninput="(function(){spiral.loops = value;})();">
+                </td>
+                <td>
+                    <label>width</label>
+                    <input tabindex="-1" type="range" min="1" max="20" value="3" class="slider" id="width"
+                        oninput="(function(){spiral.width = value;})();">
+                </td>
+                <td>
+                    <button tabindex="-1" onclick="randomize()">randomize</button>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <label>c</label>
+                    <input tabindex="1" type="number" id="c"
+                           onchange="(function () { spiral.c = Number.parseInt(value); })();">
+                </td>
+                <td>
+                    <label>scale</label>
+                    <input tabindex="-1" type="range" min="1" max="80" value="10" class="slider" id="scale"
+                        oninput="(function(){ spiral.scale = value; })();">
+                </td>
+                <td>
+                    <label>blur</label>
+                        <input tabindex="-1" type="range" min="10" max="100" value="80" class="slider" id="blur"
+                            oninput="(function(){ spiral.blur = 1 - value / 100; })();">
+                </td>
+                <td>
+                    <button tabindex="-1" id="pause" onclick="pause()">pause</button>
+                </td>
+            </tr>
+        </table>
+        <canvas id="canvas"></canvas>
+        <div id="msg"></div>
+        <a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br /><span xmlns:dct="http://purl.org/dc/terms/" href="http://purl.org/dc/dcmitype/InteractiveResource" property="dct:title" rel="dct:type">spiralmaniac</span> by <a xmlns:cc="http://creativecommons.org/ns#" href="https://github.com/marksilverman/spiralmaniac" property="cc:attributionName" rel="cc:attributionURL">Mark Silverman</a> is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>.
+    </p>
+    <script>
+        var canvas = document.getElementById('canvas');
+        var ctx = canvas.getContext('2d');
+        var ww = window.innerWidth * .5;
+        var hh = window.innerHeight * .6;
+        var raf = 0, type;
+        canvas.width = ww;
+        canvas.height = hh;
+
+        var colorMgr =
+        {
+            radd: 1, gadd: -1, badd: 1, inColor: false, fgColor: '', bgColor: 'rgba(255, 255, 255,',
+            rando: function () { return Math.floor(Math.random() * 100); },
+            next: function () {
+                if (!this.inColor)
+                {
+                    this.bgColor = 'rgba(255, 255, 255,';
+                    this.fgColor = 'black';
+                    return;
+                }
+                this.red += this.radd;
+                this.green += this.gadd;
+                this.blue += this.badd;
+                if (this.red > 255) { this.red = 255; this.radd *= -1; }
+                if (this.red < 0) { this.red = 0; this.radd *= -1; }
+                if (this.green > 255) { this.green = 255; this.gadd *= -1; }
+                if (this.green < 0) { this.green = 0; this.gadd *= -1; }
+                if (this.blue > 255) { this.blue = 255; this.badd *= -1; }
+                if (this.blue < 0) { this.blue = 0; this.badd *= -1; }
+                this.fgColor = 'rgba(' + this.red + ',' + this.green + ',' + this.blue + ')';
+            }
+        }
+        var spiral = {
+            scale: 10, blur: 0.2, width: 3, maxOffset: 2,
+            rotateSpeed: 0.01, rotateAngle: 0.0, loops: 10, x: -1, y: -1, a: 1, b: 1, c: 1,
+            draw: function () {
+                ctx.save()
+                ctx.translate(ww / 2, hh / 2);
+                ctx.rotate(this.rotateAngle);
+                ctx.beginPath();
+
+                var tooBig = false;
+                for (let angle = 0.0; angle < this.loops * 2 * Math.PI; angle += 0.005)
+                {
+                    if (type.options.selectedIndex == 0)
+                    {
+                        // archimedean 
+                        radius = this.a + this.b * Math.pow(angle, 1 / this.c);
+                        this.x = radius * Math.cos(angle);
+                        this.y = radius * Math.sin(angle);
+                    }
+                    else if (type.options.selectedIndex == 1)
+                    {
+                        // fermat
+                        this.x = this.a * Math.sqrt(angle) * Math.cos(angle);
+                        this.y = this.a * Math.sqrt(angle) * Math.sin(angle);
+                    }
+                    else if (type.options.selectedIndex == 2)
+                    {
+                        // hyperbolic
+                        this.x = this.a * Math.cos(angle) / angle;
+                        this.y = this.a * Math.sin(angle) / angle;
+                    }
+                    this.x *= this.scale;
+                    this.y *= this.scale;
+
+                    // if (this.y > hh / 2) tooBig = true;
+                    if (angle == 0)
+                        ctx.moveTo(this.x, this.y);
+                    else
+                        ctx.lineTo(this.x, this.y);
+                }
+                if (tooBig)
+                    this.scale -= 0.25;
+                document.getElementById("scale").value = this.scale;
+                ctx.lineWidth = this.width;
+                ctx.strokeStyle = colorMgr.fgColor;
+                ctx.stroke();
+                ctx.restore();
+            }
+        };
+
+        function msg(info) { document.getElementById("msg").innerHTML = info; }
+
+        function randomize() {
+            spiral.a = Math.round(10 - Math.random() * 20);
+            spiral.b = Math.round(10 - Math.random() * 20);
+            spiral.c = Math.round(10 - Math.random() * 20);
+            document.getElementById("a").value = spiral.a;
+            document.getElementById("b").value = spiral.b;
+            document.getElementById("c").value = spiral.c;
+            document.getElementById("scale").value = spiral.scale = 20;
+            if (colorMgr.inColor)
+                colorMgr.bgColor = 'rgba(' + rando1() + ',' + rando1() + ',' + rando1() + ',';
+            else
+                colorMgr.bgColor = 'rgba(255, 255, 255,';
+            if (!raf) pause();
+        }
+        function pause() {
+            if (raf) {
+                window.cancelAnimationFrame(raf);
+                document.getElementById("pause").innerHTML = "unpause";
+                raf = 0;
+            }
+            else {
+                document.getElementById("pause").innerHTML = "pause";
+                draw();
+            }
+        }
+        function rando1(r) {
+            return Math.floor(Math.random() * 155) + 100;
+        }
+
+        function main() {
+            document.getElementById("a").value = Number.parseFloat(spiral.a).toPrecision(2);
+            document.getElementById("b").value = Number.parseFloat(spiral.b).toPrecision(2);
+            document.getElementById("c").value = Number.parseFloat(spiral.c).toPrecision(2);
+            document.getElementById("scale").value = spiral.scale;
+            document.getElementById("rotate").value = 100 * spiral.rotateSpeed;
+            document.getElementById("width").value = spiral.width;
+            document.getElementById("blur").value = 100 - 100 * spiral.blur;
+            type = document.getElementById("type");
+
+
+            colorMgr.red = colorMgr.rando();
+            colorMgr.green = colorMgr.rando();
+            colorMgr.blue = colorMgr.rando();
+            draw();
+        }
+
+        function draw() {
+            colorMgr.next();
+            ctx.fillStyle = colorMgr.bgColor + spiral.blur + ')';
+            ctx.fillRect(0, 0, ww, hh);
+
+            spiral.draw();
+//            if (Math.abs(spiral.b) > spiral.maxOffset)
+//                spiral.speed = spiral.speed * -1;
+//            spiral.b += spiral.speed;
+            spiral.rotateAngle += spiral.rotateSpeed;
+
+            raf = window.requestAnimationFrame(draw);
+        }
+
+    </script>
+</body>
+</html>
